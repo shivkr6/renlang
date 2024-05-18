@@ -1,3 +1,4 @@
+mod cli;
 enum Operations {
     Push = 0,
     Plus = 1,
@@ -5,6 +6,12 @@ enum Operations {
     Dump = 3,
 }
 fn main() {
+    // Parse the command line arguments using the generated Args struct
+    let args = cli::set_flags().get_matches();
+
+    let filepath = args.get_one::<String>("file").unwrap().trim().to_string();
+    println!("{}", filepath);
+    // TODO: Unhardcode program
     let mut program = vec![
         push(34),
         push(35),

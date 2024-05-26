@@ -1,2 +1,6 @@
 /target
 /todo.txt
+/src/output
+/src/output.asm
+/src/output.o
+/src/program.ren

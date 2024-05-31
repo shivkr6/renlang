@@ -81,7 +81,7 @@ fn parse_word_as_op(token: (String, usize, usize, String)) -> (Operations, Optio
 }
 
 fn parse_program(filepath: String) -> Vec<(Operations, Option<i32>)> {
-    let vec_string = lexer::tokenize_file(&filepath);
+    let vec_string = lexing::tokenize_file(&filepath);
     vec_string.into_iter().map(parse_word_as_op).collect()
 }
 

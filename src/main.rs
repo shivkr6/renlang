@@ -1,9 +1,9 @@
 use std::fs::File;
-use std::io::prelude::*;
 use std::io::Write;
 use std::process::Command;
 
 mod cli;
+mod lexing;
 enum Operations {
     Push = 0,
     Plus = 1,
@@ -55,39 +55,33 @@ fn dump() -> (Operations, Option<i32>) {
     (Operations::Dump, None)
 }
 
-fn file_to_string(filepath: String) -> String {
-    let mut file =
-        File::open(filepath).unwrap_or_else(|error| panic!("Invalid input file path: {:?}", error));
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).unwrap();
-    contents
-}
-
-fn convert_string_to_vec_word(file_str: String) -> Vec<String> {
-    file_str.split_whitespace().map(str::to_string).collect()
-    // Now I have the operations as a vector ["3", "2", "+", "."]
-}
-
-fn parse_word_as_op(word: String) -> (Operations, Option<i32>) {
+fn parse_word_as_op(token: (String, usize, usize, String)) -> (Operations, Option<i32>) {
     assert_eq!(
         Operations::CountOps as u32,
         4,
         "Exhaustive handling of Operations while parsing"
     );
+    let filepath = token.0;
+    let row = token.1;
+    let col = token.2;
+    let word = token.3;
     if word == "+" {
         plus()
     } else if word == "-" {
         minus()
     } else if word == "." {
         dump()
+    } else if word.parse::<i32>().is_err() {
+        let err = "invalid digit found in file";
+        eprintln!("{}:{}:{}: {}: '{}'", filepath, row, col, err, word);
+        std::process::exit(1);
     } else {
         push(word.parse::<i32>().unwrap())
     }
 }
 
 fn parse_program(filepath: String) -> Vec<(Operations, Option<i32>)> {
-    let file_string = file_to_string(filepath);
-    let vec_string = convert_string_to_vec_word(file_string);
+    let vec_string = lexer::tokenize_file(&filepath);
     vec_string.into_iter().map(parse_word_as_op).collect()
 }
 
@@ -124,74 +118,74 @@ fn compile_program(
         .unwrap_or_else(|error| panic!("Invalid output file path: {:?}", error));
 
     // Defining the dump function in assembly
-    writeln!(&mut out, "segment .text")?;
-    writeln!(&mut out, "dump:")?;
-    writeln!(&mut out, "    mov     r9, -3689348814741910323")?;
-    writeln!(&mut out, "    sub     rsp, 40")?;
-    writeln!(&mut out, "    mov     BYTE [rsp+31], 10")?;
-    writeln!(&mut out, "    lea     rcx, [rsp+30]")?;
-    writeln!(&mut out, ".L2:")?;
-    writeln!(&mut out, "    mov     rax, rdi")?;
-    writeln!(&mut out, "    lea     r8, [rsp+32]")?;
-    writeln!(&mut out, "    mul     r9")?;
-    writeln!(&mut out, "    mov     rax, rdi")?;
-    writeln!(&mut out, "    sub     r8, rcx")?;
-    writeln!(&mut out, "    shr     rdx, 3")?;
-    writeln!(&mut out, "    lea     rsi, [rdx+rdx*4]")?;
-    writeln!(&mut out, "    add     rsi, rsi")?;
-    writeln!(&mut out, "    sub     rax, rsi")?;
-    writeln!(&mut out, "    add     eax, 48")?;
-    writeln!(&mut out, "    mov     BYTE [rcx], al")?;
-    writeln!(&mut out, "    mov     rax, rdi")?;
-    writeln!(&mut out, "    mov     rdi, rdx")?;
-    writeln!(&mut out, "    mov     rdx, rcx")?;
-    writeln!(&mut out, "    sub     rcx, 1")?;
-    writeln!(&mut out, "    cmp     rax, 9")?;
-    writeln!(&mut out, "    ja      .L2")?;
-    writeln!(&mut out, "    lea     rax, [rsp+32]")?;
-    writeln!(&mut out, "    mov     edi, 1")?;
-    writeln!(&mut out, "    sub     rdx, rax")?;
-    writeln!(&mut out, "    xor     eax, eax")?;
-    writeln!(&mut out, "    lea     rsi, [rsp+32+rdx]")?;
-    writeln!(&mut out, "    mov     rdx, r8")?;
-    writeln!(&mut out, "    mov     rax, 1")?;
-    writeln!(&mut out, "    syscall")?;
-    writeln!(&mut out, "    add     rsp, 40")?;
-    writeln!(&mut out, "    ret")?;
-    writeln!(&mut out, "global _start")?;
-    writeln!(&mut out, "_start:")?;
+    writeln!(out, "segment .text")?;
+    writeln!(out, "dump:")?;
+    writeln!(out, "    mov     r9, -3689348814741910323")?;
+    writeln!(out, "    sub     rsp, 40")?;
+    writeln!(out, "    mov     BYTE [rsp+31], 10")?;
+    writeln!(out, "    lea     rcx, [rsp+30]")?;
+    writeln!(out, ".L2:")?;
+    writeln!(out, "    mov     rax, rdi")?;
+    writeln!(out, "    lea     r8, [rsp+32]")?;
+    writeln!(out, "    mul     r9")?;
+    writeln!(out, "    mov     rax, rdi")?;
+    writeln!(out, "    sub     r8, rcx")?;
+    writeln!(out, "    shr     rdx, 3")?;
+    writeln!(out, "    lea     rsi, [rdx+rdx*4]")?;
+    writeln!(out, "    add     rsi, rsi")?;
+    writeln!(out, "    sub     rax, rsi")?;
+    writeln!(out, "    add     eax, 48")?;
+    writeln!(out, "    mov     BYTE [rcx], al")?;
+    writeln!(out, "    mov     rax, rdi")?;
+    writeln!(out, "    mov     rdi, rdx")?;
+    writeln!(out, "    mov     rdx, rcx")?;
+    writeln!(out, "    sub     rcx, 1")?;
+    writeln!(out, "    cmp     rax, 9")?;
+    writeln!(out, "    ja      .L2")?;
+    writeln!(out, "    lea     rax, [rsp+32]")?;
+    writeln!(out, "    mov     edi, 1")?;
+    writeln!(out, "    sub     rdx, rax")?;
+    writeln!(out, "    xor     eax, eax")?;
+    writeln!(out, "    lea     rsi, [rsp+32+rdx]")?;
+    writeln!(out, "    mov     rdx, r8")?;
+    writeln!(out, "    mov     rax, 1")?;
+    writeln!(out, "    syscall")?;
+    writeln!(out, "    add     rsp, 40")?;
+    writeln!(out, "    ret")?;
+    writeln!(out, "global _start")?;
+    writeln!(out, "_start:")?;
 
     for op in program.iter() {
         match op.0 {
             Operations::Push => {
-                writeln!(&mut out, "    ;; -- push {} --", op.1.unwrap())?;
-                writeln!(&mut out, "    push {}", op.1.unwrap())?;
+                writeln!(out, "    ;; -- push {} --", op.1.unwrap())?;
+                writeln!(out, "    push {}", op.1.unwrap())?;
             }
             Operations::Plus => {
-                writeln!(&mut out, "    ;; -- plus --")?;
-                writeln!(&mut out, "    pop rax")?;
-                writeln!(&mut out, "    pop rbx")?;
-                writeln!(&mut out, "    add rax, rbx")?;
-                writeln!(&mut out, "    push rax")?;
+                writeln!(out, "    ;; -- plus --")?;
+                writeln!(out, "    pop rax")?;
+                writeln!(out, "    pop rbx")?;
+                writeln!(out, "    add rax, rbx")?;
+                writeln!(out, "    push rax")?;
             }
             Operations::Minus => {
-                writeln!(&mut out, "    ;; -- minus --")?;
-                writeln!(&mut out, "    pop rax")?;
-                writeln!(&mut out, "    pop rbx")?;
-                writeln!(&mut out, "    sub rbx, rax")?;
-                writeln!(&mut out, "    push rbx")?;
+                writeln!(out, "    ;; -- minus --")?;
+                writeln!(out, "    pop rax")?;
+                writeln!(out, "    pop rbx")?;
+                writeln!(out, "    sub rbx, rax")?;
+                writeln!(out, "    push rbx")?;
             }
             Operations::Dump => {
-                writeln!(&mut out, "    ;; -- dump --")?;
-                writeln!(&mut out, "    pop rdi")?;
-                writeln!(&mut out, "    call dump")?;
+                writeln!(out, "    ;; -- dump --")?;
+                writeln!(out, "    pop rdi")?;
+                writeln!(out, "    call dump")?;
             }
             Operations::CountOps => unreachable!("CountOps is not reachable while compiling"),
         }
     }
-    writeln!(&mut out, "    mov rax, 60")?;
-    writeln!(&mut out, "    mov rdi, 0")?;
-    writeln!(&mut out, "    syscall")?;
+    writeln!(out, "    mov rax, 60")?;
+    writeln!(out, "    mov rdi, 0")?;
+    writeln!(out, "    syscall")?;
 
     Ok(())
 }

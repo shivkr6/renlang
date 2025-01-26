@@ -20,7 +20,7 @@ Explore interpreter/compiler fundamentals through lexical analysis, parsing, and
 
 ### Build from Source
 ```
-git clone https://github.com/yourusername/renlang.git
+git clone https://github.com/shivkr6/renlang.git
 cd renlang
 cargo install --path .
 ```
